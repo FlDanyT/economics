@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type FormEvent,
   type ReactNode,
+  type RefObject,
   type SetStateAction,
 } from "react";
 import {
@@ -35,6 +36,7 @@ import {
   CloudSun,
   LayoutDashboard,
   MapPin,
+  Menu,
   MessageCircle,
   Minus,
   Package,
@@ -301,9 +303,32 @@ function useReveal() {
   }, []);
 }
 
+function useDismissibleMenu(ref: RefObject<HTMLDetailsElement | null>) {
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node))
+        ref.current.open = false;
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && ref.current?.open) {
+        ref.current.open = false;
+        ref.current.querySelector("summary")?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [ref]);
+}
+
 function Landing() {
   useReveal();
   const navigate = useNavigate();
+  const mobileMenuRef = useRef<HTMLDetailsElement>(null);
+  useDismissibleMenu(mobileMenuRef);
   const submitContact = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -358,6 +383,20 @@ function Landing() {
               Регистрация <ArrowUpRight size={16} />
             </Link>
           </div>
+          <details className="mobile-site-menu" ref={mobileMenuRef}>
+            <summary><Menu size={20} /> Меню</summary>
+            <nav
+              aria-label="Навигация по сайту"
+              onClick={() => { if (mobileMenuRef.current) mobileMenuRef.current.open = false; }}
+            >
+              <a href="#problem">О продукте</a>
+              <a href="#workflow">Как это работает</a>
+              <a href="#capabilities">Возможности</a>
+              <a href="#contact">Контакты</a>
+              <Link to="/app">Войти</Link>
+              <Link to="/register">Регистрация</Link>
+            </nav>
+          </details>
         </div>
       </header>
       <main>
@@ -905,6 +944,11 @@ function AppShell({
   weather: WeatherState;
 }) {
   const location = useLocation();
+  const mobileMenuRef = useRef<HTMLDetailsElement>(null);
+  useDismissibleMenu(mobileMenuRef);
+  useEffect(() => {
+    if (mobileMenuRef.current) mobileMenuRef.current.open = false;
+  }, [location.pathname]);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -1057,6 +1101,16 @@ function AppShell({
       </aside>
       <div className="app-main">
         <header className="app-topbar">
+          <details className="mobile-app-menu" ref={mobileMenuRef}>
+            <summary><Menu size={20} /> Меню</summary>
+            <nav aria-label="Разделы приложения">
+              <NavLink to="/app" end>Обзор</NavLink>
+              <NavLink to="/app/sales">История продаж</NavLink>
+              <NavLink to="/app/products">Продукты</NavLink>
+              <NavLink to="/app/chat">Чат</NavLink>
+              <NavLink to="/app/settings">Настройки</NavLink>
+            </nav>
+          </details>
           <div className="breadcrumbs">
             <span>Economics</span>
             <span>/</span>
@@ -2371,7 +2425,8 @@ function ProductsPage({
                 </button>
               </div>
             ) : (
-              <div className="table-wrap">
+              <div className="table-wrap" role="region" aria-label="Партии, прокручиваемая таблица" tabIndex={0}>
+                <p className="table-scroll-hint">Таблицу можно листать по горизонтали →</p>
                 <table>
                   <thead>
                     <tr>
@@ -2576,7 +2631,8 @@ function SalesPage({
                 />
               </div>
             </div>
-            <div className="table-wrap">
+            <div className="table-wrap" role="region" aria-label="Продажи, прокручиваемая таблица" tabIndex={0}>
+              <p className="table-scroll-hint">Таблицу можно листать по горизонтали →</p>
               <table>
                 <thead>
                   <tr>

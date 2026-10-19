@@ -10,6 +10,7 @@ Economics is a Russian-language, browser-based bakery/café planning application
 - `src/model.ts` defines persisted data types, batch and sale allocation, expiry/discount rules, forecasts and weather adjustments. `src/chartData.ts` prepares chart data; `src/AnalyticsCharts.tsx` renders the shared sales chart.
 - `src/index.css` holds most UI styling; `tailwind.config.js` and `postcss.config.js` configure Tailwind. `index.html` and `public/` contain the document shell and favicon.
 - `src/SiteCursor.tsx` owns the shared decorative pointer ring. Route entrance and initial product-card motion live in `App.tsx`/`index.css`; keep them brief, non-blocking, and disabled for reduced motion or imprecise pointers.
+- Responsive layouts and compact navigation live in `src/index.css`/`App.tsx`. At widths up to 980px the sidebar and landing navigation become keyboard-accessible menus; on small screens charts and dense tables scroll within their own regions. Preserve these paths and check phone, tablet and desktop layouts after UI changes.
 - `Frontend/tests/*.test.mjs` cover charts, expiry, pricing and today's weather. There are no more specific `AGENTS.md` files at present; respect any that are added later.
 
 ## Stack and commands
@@ -34,6 +35,6 @@ npm run build
 
 ## Change discipline
 
-Read the relevant components and model functions before changing behavior. Preserve existing user records, navigation, calculations and working actions. Keep visible interface copy in Russian; distinguish actual features from unavailable ones and do not fabricate results or data sources. Follow the existing light green dashboard style and check affected desktop layouts. Run checks appropriate to the change, normally `npm test` for model/chart behavior and `npm run build` for frontend changes.
+Read the relevant components and model functions before changing behavior. Preserve existing user records, navigation, calculations and working actions. Keep visible interface copy in Russian; distinguish actual features from unavailable ones and do not fabricate results or data sources. Follow the existing light green dashboard style and check affected screen sizes. Run checks appropriate to the change, normally `npm test` for model/chart behavior and `npm run build` for frontend changes.
 
 Review and update this file when your work makes it inaccurate or introduces a significant, lasting change to structure, architecture, commands, conventions or important limitations. Do not turn it into a changelog for minor edits.

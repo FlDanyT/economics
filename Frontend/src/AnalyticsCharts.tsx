@@ -321,6 +321,7 @@ export function SalesHistoryChart({
               </span>
             ))}
           </div>
+          <p className="chart-scroll-hint">График можно листать по горизонтали →</p>
           <div className="chart-canvas">
             <svg
               viewBox={`0 0 ${chart.width} ${chart.height}`}
@@ -450,6 +451,7 @@ export function SalesHistoryChart({
                     role="button"
                     aria-label={`${bucket.detail}: ${plotted.map((series) => `${series.name} ${valueText(series.values[index], metric)}`).join(", ")}`}
                     onMouseEnter={() => setHovered(index)}
+                    onPointerDown={() => setHovered(index)}
                     onFocus={() => setHovered(index)}
                     onBlur={() => setHovered(null)}
                     onKeyDown={(event) => {
