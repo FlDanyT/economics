@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Economics">
+  <rect width="64" height="64" rx="15" fill="#f8f8f5"/>
+  <g transform="rotate(-20 32 32)">
+    <path d="M15 13h11c3 0 5 2 5 5v13H18c-3 0-5-2-5-5V18c0-3 2-5 2-5Z" fill="#1c4438"/>
+    <path d="M38 13h8c3 0 5 2 5 5v8c0 3-2 5-5 5H33V18c0-3 2-5 5-5Z" fill="#9dce5b"/>
+    <path d="M18 33h13v13c0 3-2 5-5 5h-8c-3 0-5-2-5-5v-8c0-3 2-5 5-5Z" fill="#9dce5b"/>
+    <path d="M33 33h13c3 0 5 2 5 5v8c0 3-2 5-5 5h-8c-3 0-5-2-5-5V33Z" fill="#1c4438"/>
+  </g>
+</svg>

@@ -27,9 +27,11 @@ import {
   Bell,
   CalendarDays,
   Check,
+  ChevronDown,
   Clock3,
+  CloudOff,
+  CloudRain,
   CloudSun,
-  FileSpreadsheet,
   LayoutDashboard,
   MapPin,
   MessageCircle,
@@ -40,7 +42,6 @@ import {
   Search,
   Send,
   Settings as SettingsIcon,
-  ShieldCheck,
   Sparkles,
   Sun,
   Trash2,
@@ -51,15 +52,23 @@ import {
 } from "lucide-react";
 import {
   availableFor,
+  assessTodayWeather,
+  batchPrice,
   batchViews,
+  businessClock,
+  businessDateKey,
   dateKey,
+  describeTomorrowWeather,
+  expirationAdvice,
   forecast,
   hours,
   id,
   initialPlan,
   initialData,
   key,
+  money,
   plural,
+  saleLinesFor,
   salesFitBatches,
   shortDateTime,
   timeInput,
@@ -70,12 +79,17 @@ import {
   type Product,
   type Sale,
   type Weather,
+  type HourlyWeather,
+  type TodayWeather,
 } from "./model";
+import { SalesHistoryChart } from "./AnalyticsCharts";
 import "./index.css";
 
 type Dialog = "product" | "batch" | "sale" | null;
 type WeatherState = {
   items: Weather[];
+  hourly: HourlyWeather[];
+  timeZone?: string;
   status: "idle" | "loading" | "ready" | "error";
   message: string;
 };
@@ -97,6 +111,18 @@ const tomorrowLabel = () =>
     weekday: "long",
   });
 const fmt = (n: number) => `${n} ${plural(n, "шт.", "шт.", "шт.")}`;
+const rub = (n: number) =>
+  `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(n)} ₽`;
+const remainingTime = (minutes: number) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return [
+    h ? hours(h) : "",
+    m ? `${m} ${plural(m, "минута", "минуты", "минут")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
 
 function useData() {
   const [data, setData] = useState<Data>(() => {
@@ -125,6 +151,7 @@ function useData() {
 function useWeather(city: string) {
   const [state, setState] = useState<WeatherState>({
     items: [],
+    hourly: [],
     status: "idle",
     message: "",
   });
@@ -132,16 +159,17 @@ function useWeather(city: string) {
     if (!city.trim()) {
       setState({
         items: [],
+        hourly: [],
         status: "idle",
         message: "Укажите город в настройках",
       });
       return;
     }
     const controller = new AbortController();
-    const load = async () => {
-      setState({
-        items: [],
-        status: "loading",
+    setState({ items: [], hourly: [], status: "loading", message: "Загружаем прогноз погоды" });
+    const load = async (initial = false) => {
+      setState((previous) => !initial && previous.status === "ready" ? previous : {
+        items: [], hourly: [], status: "loading",
         message: "Загружаем прогноз погоды",
       });
       try {
@@ -153,7 +181,7 @@ function useWeather(city: string) {
         const geo = await geoResponse.json();
         const place = geo.results?.[0];
         if (!place) throw new Error("Город не найден");
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max&timezone=auto&forecast_days=3`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&daily=weather_code,temperature_2m_max&hourly=weather_code,temperature_2m&timezone=auto&forecast_days=3`;
         const response = await fetch(url, { signal: controller.signal });
         if (!response.ok) throw new Error("Погода временно недоступна");
         const result = await response.json();
@@ -165,20 +193,31 @@ function useWeather(city: string) {
             label: weatherLabel(result.daily.weather_code[i]),
           }),
         );
-        setState({ items, status: "ready", message: `Погода: ${place.name}` });
+        const hourly: HourlyWeather[] = Array.isArray(result.hourly?.time)
+          ? result.hourly.time.map((time: string, i: number) => ({
+              time,
+              code: result.hourly.weather_code?.[i],
+              temperature: result.hourly.temperature_2m?.[i],
+            }))
+          : [];
+        setState({ items, hourly, timeZone: result.timezone || place.timezone,
+          status: "ready", message: `Погода: ${place.name}` });
       } catch (error) {
         if (!controller.signal.aborted)
           setState({
             items: [],
+            hourly: [],
             status: "error",
             message:
               error instanceof Error ? error.message : "Погода недоступна",
           });
       }
     };
-    const timeout = setTimeout(load, 350);
+    const timeout = setTimeout(() => load(true), 350);
+    const refresh = setInterval(() => load(), 30 * 60 * 1000);
     return () => {
       clearTimeout(timeout);
+      clearInterval(refresh);
       controller.abort();
     };
   }, [city]);
@@ -323,7 +362,7 @@ function Landing() {
             <a href="#contact">Контакты</a>
           </nav>
           <div className="header-actions">
-            <Link to="/app" className="text-link">
+            <Link to="/app" className="header-login">
               Войти
             </Link>
             <Link to="/register" className="header-register">
@@ -358,10 +397,6 @@ function Landing() {
                 </span>{" "}
                 Как это работает
               </a>
-            </div>
-            <div className="hero-note">
-              <ShieldCheck size={16} /> Данные сохраняются только в вашем
-              браузере
             </div>
           </div>
           <div className="hero-visual reveal">
@@ -586,8 +621,8 @@ function Landing() {
           <div className="site-container">
             <SectionHeading
               eyebrow="04 / ВОЗМОЖНОСТИ"
-              title="Честно о том, что работает уже сейчас"
-              description="Основной сценарий планирования уже доступен. Интеграции и автоматизация — следующие этапы развития продукта."
+              title="Возможности для ежедневной работы"
+              description="Записывайте выпуск и продажи, планируйте партии и следите за сроками."
             />
             <div className="capability-grid">
               <div className="capability-card now reveal">
@@ -618,22 +653,26 @@ function Landing() {
                   </li>
                 </ul>
               </div>
-              <div className="capability-card future reveal">
-                <div className="cap-label">
-                  НА СЛЕДУЮЩИХ ЭТАПАХ <ArrowUpRight size={16} />
-                </div>
-                <h3>Больше данных. Меньше ручной работы.</h3>
-                <div className="future-tags">
-                  <span>Интеграция с кассой</span>
-                  <span>Excel и Google Sheets</span>
-                  <span>Открытый API</span>
-                  <span>События рядом</span>
-                  <span>AI-помощник</span>
-                  <span>Несколько точек</span>
-                  <span>Уведомления</span>
-                  <span>Улучшенный прогноз</span>
-                </div>
-                <p>Эти возможности запланированы и пока недоступны.</p>
+              <div className="capability-card insight reveal">
+                <div className="cap-label">РЕШЕНИЯ НА ОСНОВЕ ДАННЫХ</div>
+                <h3>Планирование и контроль сроков</h3>
+                <ul>
+                  <li>
+                    <Check /> Предварительная оценка при ограниченной истории
+                  </li>
+                  <li>
+                    <Check /> Подсказка по дополнительной партии
+                  </li>
+                  <li>
+                    <Check /> Рекомендации для истекающих партий
+                  </li>
+                  <li>
+                    <Check /> Учёт дня недели и основных праздников РФ
+                  </li>
+                  <li>
+                    <Check /> Погода по выбранному городу при доступных данных
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
@@ -705,7 +744,6 @@ function Landing() {
         </div>
         <div className="site-container footer-bottom">
           <span>© {new Date().getFullYear()} Economics.</span>
-          <span>Данные о продажах остаются в вашем браузере</span>
         </div>
       </footer>
     </div>
@@ -788,9 +826,7 @@ function Register({ setData }: { setData: Dispatch<SetStateAction<Data>> }) {
             <span className="pulse-dot" /> Начните с основного
           </div>
           <h2>Создайте рабочее пространство</h2>
-          <p>
-            Настройки рабочего пространства сохраняются только в этом браузере.
-          </p>
+          <p>Укажите данные заведения для настройки рабочего пространства.</p>
           <form
             onSubmit={submit}
             onInput={(e) => {
@@ -864,10 +900,6 @@ function Register({ setData }: { setData: Dispatch<SetStateAction<Data>> }) {
               Перейти в приложение <ArrowUpRight size={18} />
             </PrimaryButton>
           </form>
-          <div className="register-note">
-            <ShieldCheck size={18} /> Учётная запись пока не создаётся. Пароль
-            не сохраняется.
-          </div>
         </div>
       </div>
     </div>
@@ -891,11 +923,26 @@ function AppShell({
   const [notice, setNotice] = useState("");
   const [nowTick, setNowTick] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setNowTick((t) => t + 1), 60000);
-    return () => window.clearInterval(timer);
+    const refresh = () => setNowTick((tick) => tick + 1);
+    const onVisibilityChange = () => {
+      if (!document.hidden) refresh();
+    };
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
-  const views = useMemo(() => batchViews(data), [data, nowTick]);
-  const alerts = views.filter((b) => b.remaining > 0 && b.status !== "fresh");
+  const { now, views } = useMemo(() => {
+    const now = new Date();
+    return { now, views: batchViews(data, now) };
+  }, [data, nowTick]);
+  const alerts = views
+    .filter((b) => b.remaining > 0 && b.status !== "fresh")
+    .sort((a, b) => +a.expiresAt - +b.expiresAt);
   const openProduct = (p?: Product) => {
     setEditingProduct(p || null);
     setDialog("product");
@@ -907,6 +954,47 @@ function AppShell({
   const openBatch = (b?: Batch) => {
     setEditingBatch(b || null);
     setDialog("batch");
+  };
+  const changeBatchDiscount = (batch: Batch, percent: number | null) => {
+    const product = data.products.find((p) => p.id === batch.productId);
+    if (percent !== null) {
+      const view = batchViews(data, new Date()).find((b) => b.id === batch.id);
+      if (!view || view.remaining <= 0 || view.status !== "aging") {
+        setNotice(
+          "Скидку можно применить только к партии с действующим сроком продажи.",
+        );
+        return;
+      }
+      if (
+        !product ||
+        product.price === undefined ||
+        !Number.isFinite(product.price) ||
+        product.price < 0
+      ) {
+        setNotice("Укажите обычную цену продукта перед применением скидки.");
+        if (product) openProduct(product);
+        return;
+      }
+    }
+    setData((current) => ({
+      ...current,
+      batches: current.batches.map((item) =>
+        item.id === batch.id
+          ? {
+              ...item,
+              discount:
+                percent === null || !product || product.price === undefined
+                  ? undefined
+                  : {
+                      percent,
+                      regularPrice: product.price,
+                      unitPrice: money(product.price * (1 - percent / 100)),
+                    },
+            }
+          : item,
+      ),
+    }));
+    setNotice("");
   };
   const close = () => {
     setDialog(null);
@@ -973,9 +1061,7 @@ function AppShell({
               <Sparkles size={20} />
             </div>
             <strong>Решения на основе данных</strong>
-            <p>
-              Добавьте продажи за несколько дней, чтобы увидеть первый прогноз.
-            </p>
+            <p>Записывайте продажи, чтобы уточнять оценку спроса.</p>
           </div>
         </div>
       </aside>
@@ -1007,8 +1093,8 @@ function AppShell({
           </div>
         </header>
         {notice && (
-          <div className="app-notice">
-            <Check size={17} />
+          <div className="app-notice" role="alert">
+            <Bell size={17} />
             {notice}
             <button onClick={() => setNotice("")} aria-label="Закрыть">
               <X size={16} />
@@ -1024,11 +1110,14 @@ function AppShell({
                   {...{
                     data,
                     weather,
+                    now,
                     views,
                     alerts,
                     openProduct,
                     openBatch,
                     openSale,
+                    openWriteOff: setDiscardBatch,
+                    changeBatchDiscount,
                   }}
                 />
               }
@@ -1044,6 +1133,7 @@ function AppShell({
                     openBatch,
                     setData,
                     setDiscardBatch,
+                    changeBatchDiscount,
                   }}
                 />
               }
@@ -1073,7 +1163,7 @@ function AppShell({
                 ? d.products.map((x) => (x.id === p.id ? p : x))
                 : [...d.products, p],
             }));
-            setNotice(editingProduct ? "Продукт обновлён" : "Продукт добавлен");
+            setNotice("");
             close();
           }}
         />
@@ -1090,7 +1180,7 @@ function AppShell({
                 ? d.batches.map((x) => (x.id === b.id ? b : x))
                 : [...d.batches, b],
             }));
-            setNotice(editingBatch ? "Партия обновлена" : "Партия добавлена");
+            setNotice("");
             close();
           }}
         />
@@ -1107,7 +1197,7 @@ function AppShell({
                 ? d.sales.map((x) => (x.id === s.id ? s : x))
                 : [...d.sales, s],
             }));
-            setNotice(editingSale ? "Продажа обновлена" : "Продажа добавлена");
+            setNotice("");
             close();
           }}
         />
@@ -1127,7 +1217,7 @@ function AppShell({
                   : b,
               ),
             }));
-            setNotice(`Списано ${fmt(qty)}`);
+            setNotice("");
             close();
           }}
         />
@@ -1201,68 +1291,445 @@ function Metric({
     </div>
   );
 }
+function StockCoverage({ stock, demand }: { stock: number; demand: number }) {
+  const scale = Math.max(1, stock, demand);
+  const shortfall = Math.max(0, demand - stock);
+  const explanation =
+    demand === 0
+      ? "До закрытия дополнительный спрос не ожидается."
+      : shortfall > 0
+        ? `Ожидаемый спрос превышает остаток на ${fmt(shortfall)}`
+        : "Текущего остатка хватает на ожидаемые продажи до закрытия.";
+  return (
+    <div
+      className={`decision-indicator${shortfall ? " has-shortfall" : ""}`}
+      tabIndex={0}
+      role="group"
+      aria-label={`В наличии ${fmt(stock)} Ожидается продать до закрытия ${fmt(demand)} ${explanation}`}
+    >
+      <div className="decision-indicator-track" aria-hidden="true">
+        <span
+          className="decision-indicator-stock"
+          style={{ width: `${(stock / scale) * 100}%` }}
+        />
+        {shortfall > 0 && (
+          <span
+            className="decision-indicator-shortfall"
+            style={{
+              left: `${(stock / scale) * 100}%`,
+              width: `${(shortfall / scale) * 100}%`,
+            }}
+          />
+        )}
+        {demand > 0 && <i style={{ left: `${(demand / scale) * 100}%` }} />}
+      </div>
+      <div className="decision-indicator-labels">
+        <span>
+          В наличии <b>{fmt(stock)}</b>
+        </span>
+        <span>
+          До закрытия <b>{fmt(demand)}</b>
+        </span>
+      </div>
+      <span className="decision-indicator-state">
+        {shortfall > 0 ? `Не хватает ${fmt(shortfall)}` : explanation}
+      </span>
+      <div className="decision-indicator-tooltip" role="tooltip">
+        <strong>Покрытие спроса</strong>
+        <span>
+          В наличии: {fmt(stock)} · ожидается продать: {fmt(demand)}
+        </span>
+        <span>{explanation}</span>
+      </div>
+    </div>
+  );
+}
+function MorningShare({
+  morning,
+  demand,
+}: {
+  morning: number;
+  demand: number;
+}) {
+  const percent = demand > 0 ? Math.round((morning / demand) * 100) : null;
+  const explanation =
+    demand > 0
+      ? `Первая партия покрывает около ${percent}% дневной оценки. Остальное можно приготовить позже, ориентируясь на продажи.`
+      : "Ожидаемый спрос равен нулю; долю первой партии не рассчитываем.";
+  return (
+    <div
+      className="decision-indicator morning-indicator"
+      tabIndex={0}
+      role="group"
+      aria-label={`Первая партия ${fmt(morning)} из дневной оценки ${fmt(demand)} ${explanation}`}
+    >
+      <div className="decision-indicator-track" aria-hidden="true">
+        {demand > 0 && (
+          <span
+            className="decision-indicator-stock"
+            style={{ width: `${Math.min(100, (morning / demand) * 100)}%` }}
+          />
+        )}
+      </div>
+      <div className="decision-indicator-labels">
+        <span>
+          Первая партия <b>{fmt(morning)}</b>
+        </span>
+        <span>
+          За день <b>{fmt(demand)}</b>
+        </span>
+      </div>
+      <span className="decision-indicator-state">
+        {percent === null
+          ? "Доля не рассчитывается"
+          : `${percent}% дневной оценки`}
+      </span>
+      <div className="decision-indicator-tooltip" role="tooltip">
+        <strong>Доля утреннего выпуска</strong>
+        <span>
+          Приготовить утром: {fmt(morning)} · спрос за день: {fmt(demand)}
+        </span>
+        <span>{explanation}</span>
+      </div>
+    </div>
+  );
+}
+function TomorrowWeatherCard({
+  weather,
+  impact,
+  adjustment,
+  missingLocation,
+}: {
+  weather?: Weather;
+  impact: ReturnType<typeof describeTomorrowWeather>;
+  adjustment?: number;
+  missingLocation: boolean;
+}) {
+  const icon = !weather ? (
+    impact.title === "Загружаем погоду" ? (
+      <CloudSun size={22} />
+    ) : (
+      <CloudOff size={22} />
+    )
+  ) : weather.code >= 51 ? (
+    <CloudRain size={22} />
+  ) : weather.code >= 3 ? (
+    <CloudSun size={22} />
+  ) : (
+    <Sun size={22} />
+  );
+  const result = impact.kind === "adjusted"
+    ? `прогноз спроса ${adjustment === -0.05 ? "−5%" : "−3%"}`
+    : impact.kind === "context"
+      ? "оценка спроса пока недоступна"
+      : "без погодной поправки";
+  return <WeatherBrief
+    day="ЗАВТРА"
+    icon={icon}
+    summary={missingLocation ? "Укажите город для прогноза погоды" : `${impact.conditions} · ${result}`}
+    detail={missingLocation ? "Погодные данные станут доступны после выбора города в настройках." : impact.detail}
+    note={impact.note}
+    adjusted={impact.kind === "adjusted"}
+  />;
+}
+function WeatherBrief({ day, icon, summary, detail, note, adjusted = false }: {
+  day: string;
+  icon: ReactNode;
+  summary: string;
+  detail: string;
+  note?: string;
+  adjusted?: boolean;
+}) {
+  return (
+    <details className={`overview-weather${adjusted ? " is-adjusted" : ""}`}>
+      <summary>
+        <span className="overview-weather-icon" aria-hidden="true">{icon}</span>
+        <span className="overview-weather-copy">
+          <small>ПОГОДА · {day}</small>
+          <strong aria-live="polite">{summary}</strong>
+        </span>
+        <span className="overview-weather-more">
+          <span className="overview-weather-closed">Подробнее</span>
+          <span className="overview-weather-open">Свернуть</span>
+          <ChevronDown size={15} />
+        </span>
+      </summary>
+      <div className="overview-weather-detail">
+        <p>{detail}</p>
+        {note && <small>{note}</small>}
+      </div>
+    </details>
+  );
+}
+function TodayWeatherCard({
+  weather, loading, hasEstimate, currentTime, missingLocation,
+}: {
+  weather: TodayWeather;
+  loading: boolean;
+  hasEstimate: boolean;
+  currentTime: string;
+  missingLocation: boolean;
+}) {
+  const percent = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
+    .format(-weather.adjustment * 100);
+  const change = weather.rainMinutes > 0
+    ? `${weather.firstRain && weather.firstRain <= currentTime ? "Сейчас ожидаются" : `После ${weather.firstRain} ожидаются`} осадки`
+    : weather.heatMinutes > 0
+      ? `${weather.firstHeat && weather.firstHeat <= currentTime ? "Сейчас ожидается" : `После ${weather.firstHeat} ожидается`} жара`
+      : "Осадков и сильной жары до закрытия не ожидается";
+  const conditions = weather.kind === "available"
+    ? weather.rainMinutes > 0
+      ? `${weather.firstRain && weather.firstRain <= currentTime ? "Осадки сейчас" : `Осадки после ${weather.firstRain}`}`
+      : weather.heatMinutes > 0
+        ? `${weather.firstHeat && weather.firstHeat <= currentTime ? "Жара сейчас" : `Жара после ${weather.firstHeat}`}`
+        : weather.conditions || "Погода до закрытия"
+    : weather.kind === "closed"
+      ? "Рабочий день завершён"
+      : weather.kind === "hours"
+        ? "Укажите часы работы в настройках"
+        : missingLocation ? "Укажите город в настройках" : loading ? "Загружаем почасовую погоду" : "Почасовая погода недоступна";
+  const summary = weather.kind === "available"
+    ? `${conditions} · ${!hasEstimate ? "оценка спроса пока недоступна" : weather.adjustment < 0 ? `поправка −${percent}%` : "без погодной поправки"}`
+    : conditions;
+  const detail = weather.kind === "available"
+    ? !hasEstimate
+      ? "Для оценки спроса нужны данные о продажах. Погода сама по себе не задаёт количество."
+      : weather.adjustment < 0
+        ? `Расчётная поправка к спросу до закрытия: −${percent}%. Условное правило модели: осадки −5%, жара −3% пропорционально затронутым часам; итог округлён до штук.`
+        : "Погода не изменила оценку спроса до закрытия."
+    : weather.kind === "closed"
+      ? "Дополнительный выпуск на сегодня не рекомендуется."
+      : weather.kind === "hours"
+        ? "Без рабочих часов погодную поправку для оставшейся смены рассчитать нельзя."
+        : missingLocation
+          ? "Для местного времени и погоды укажите город. Пока используется время устройства."
+          : hasEstimate
+            ? "Оценка спроса рассчитана без погодной поправки."
+            : "Для оценки спроса нужны данные о продажах; погода не задаёт количество.";
+  return <WeatherBrief
+    day="СЕГОДНЯ"
+    icon={weather.kind === "available" ? weather.rainMinutes > 0 ? <CloudRain size={20} /> : weather.heatMinutes > 0 ? <Sun size={20} /> : <CloudSun size={20} /> : <CloudOff size={20} />}
+    summary={summary}
+    detail={weather.kind === "available" ? `${weather.conditions}. ${change}. ${detail}` : detail}
+    adjusted={weather.adjustment < 0 && hasEstimate}
+  />;
+}
+function ForecastExplanation({
+  estimate,
+  morning,
+  product,
+  weather,
+  target,
+  loading,
+}: {
+  estimate: ReturnType<typeof forecast>;
+  morning: number | null;
+  product: Product;
+  weather?: Weather;
+  target: Date;
+  loading: boolean;
+}) {
+  const impact = describeTomorrowWeather(weather, estimate, loading);
+  const day = target.toLocaleDateString("ru-RU", { weekday: "long" });
+  const reasons = estimate.reasons.filter(
+    (reason) => !reason.startsWith("Погода"),
+  );
+  return (
+    <details className="morning-explanation">
+      <summary>
+        Как сформирован прогноз <ChevronDown size={15} />
+      </summary>
+      <div className="morning-explanation-body">
+        {estimate.amount === null ? (
+          <>
+            <p>Оценка пока не рассчитана: нужны записи о продажах.</p>
+            <p>
+              {`Завтра — ${day}. ${weather ? `Погода: ${impact.conditions}.` : "Погодных данных нет."} Эти сведения сами по себе не задают количество.`}
+            </p>
+          </>
+        ) : (
+          <>
+            {estimate.preliminary && (
+              <p className="explanation-preliminary">
+                Предварительная оценка: история продаж пока ограничена.
+              </p>
+            )}
+            <ul>
+              {reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+              <li>{`Погода: ${impact.conditions}. ${impact.detail}${impact.note ? ` ${impact.note}` : ""}`}</li>
+              <li>{`Первую партию определяют срок свежести (${product.freshnessHours} ч), срок продажи (${product.shelfHours} ч) и часы работы.`}</li>
+            </ul>
+            <div className="morning-explanation-result">
+              <span>
+                Спрос за день <b>{fmt(estimate.amount)}</b>
+              </span>
+              <span>
+                Приготовить утром{" "}
+                <b>{morning === null ? "Нет оценки" : fmt(morning)}</b>
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
 function Overview({
   data,
   weather,
+  now,
   alerts,
   openProduct,
   openBatch,
   openSale,
+  openWriteOff,
+  changeBatchDiscount,
 }: {
   data: Data;
   weather: WeatherState;
+  now: Date;
   views: ReturnType<typeof batchViews>;
   alerts: ReturnType<typeof batchViews>;
   openProduct: (p?: Product) => void;
   openBatch: (b?: Batch) => void;
   openSale: (s?: Sale) => void;
+  openWriteOff: (b: Batch) => void;
+  changeBatchDiscount: (b: Batch, percent: number | null) => void;
 }) {
-  const t = tomorrow(),
-    today = new Date();
+  const [period, setPeriod] = useState<"today" | "tomorrow">("today");
+  const [forecastQuery, setForecastQuery] = useState("");
+  const clock = businessClock(now, weather.timeZone);
+  const currentTime = `${String(Math.floor(clock.minutes / 60)).padStart(2, "0")}:${String(clock.minutes % 60).padStart(2, "0")}`;
+  const t = new Date(`${clock.date}T12:00`);
+  t.setDate(t.getDate() + 1);
   const weatherTomorrow = weather.items.find((w) => w.date === dateKey(t));
-  const weatherToday = weather.items.find((w) => w.date === dateKey(today));
+  const todayWeather = assessTodayWeather(weather.hourly, data.settings, now, weather.timeZone);
   const recs = data.products.map((p) => ({
     product: p,
-    tomorrow: forecast(data, p.id, t, weatherTomorrow),
-    today: todayRecommendation(data, p.id, weatherToday),
+    tomorrow: forecast(data, p.id, t, weatherTomorrow, now, weather.timeZone),
+    today: todayRecommendation(data, p.id, todayWeather, now, weather.timeZone),
+    producedToday: data.batches
+      .filter(
+        (b) =>
+          b.productId === p.id &&
+          businessDateKey(new Date(b.preparedAt), weather.timeZone) === clock.date,
+      )
+      .reduce((n, b) => n + b.quantity, 0),
+    soldToday: data.sales
+      .filter(
+        (s) =>
+          s.productId === p.id && businessDateKey(new Date(s.soldAt), weather.timeZone) === clock.date,
+      )
+      .reduce((n, s) => n + s.quantity, 0),
+    producedEarlier: data.batches
+      .filter(
+        (b) =>
+          b.productId === p.id &&
+          +new Date(b.preparedAt) < +now &&
+          businessDateKey(new Date(b.preparedAt), weather.timeZone) !== clock.date,
+      )
+      .reduce((n, b) => n + b.quantity, 0),
   }));
+  const tomorrowRows = recs
+    .filter(({ product }) =>
+      product.name.toLowerCase().includes(forecastQuery.trim().toLowerCase()),
+    )
+    .map((item) => ({
+      ...item,
+      initial:
+        item.tomorrow.amount === null
+          ? null
+          : initialPlan(data, item.product, item.tomorrow.amount).quantity,
+    }));
+  const weatherImpact = describeTomorrowWeather(
+    weatherTomorrow,
+    recs.find((item) => item.tomorrow.amount !== null)?.tomorrow,
+    weather.status === "loading",
+  );
   const producedToday = data.batches
-    .filter((b) => dateKey(new Date(b.preparedAt)) === dateKey(today))
+    .filter((b) => businessDateKey(new Date(b.preparedAt), weather.timeZone) === clock.date)
     .reduce((n, b) => n + b.quantity, 0);
   const soldToday = data.sales
-    .filter((s) => dateKey(new Date(s.soldAt)) === dateKey(today))
+    .filter((s) => businessDateKey(new Date(s.soldAt), weather.timeZone) === clock.date)
     .reduce((n, s) => n + s.quantity, 0);
-  const stock = data.products.reduce((n, p) => n + availableFor(data, p.id), 0);
+  const stock = data.products.reduce(
+    (n, p) => n + availableFor(data, p.id, now),
+    0,
+  );
   const expiring = alerts.filter((a) => a.status === "aging").length;
+  const expired = alerts.filter((a) => a.status === "expired").length;
   return (
     <>
       <PageTitle
         eyebrow="РАБОЧИЙ СТОЛ"
         title={`Добрый день${data.settings.businessName ? `, ${data.settings.businessName}` : ""}`}
         description={`${ruToday()} · Ваша смена в одном месте`}
-        action={
-          <div className="title-actions">
-            <button
-              className="secondary-button"
-              onClick={() => openSale()}
-              disabled={!data.products.length}
-            >
-              <Plus size={17} /> Добавить продажу
-            </button>
-            <PrimaryButton onClick={() => openBatch()} className="compact">
-              <Plus size={17} /> Новая партия
-            </PrimaryButton>
-          </div>
-        }
       />
-      {data.products.length === 0 ? (
+      <div className="overview-tabs" role="tablist" aria-label="Период обзора">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={period === "today"}
+          onClick={() => setPeriod("today")}
+        >
+          <span>Сегодня</span>
+          <small>Выпуск, остатки и решения</small>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={period === "tomorrow"}
+          onClick={() => setPeriod("tomorrow")}
+        >
+          <span>Завтра</span>
+          <small>Спрос и план выпуска</small>
+        </button>
+      </div>
+      <div className="overview-weather-row" key={period}>
+        {period === "today" ? (
+          <TodayWeatherCard
+            weather={todayWeather}
+            loading={weather.status === "loading"}
+            hasEstimate={recs.some((item) => item.today.amount !== null)}
+            currentTime={currentTime}
+            missingLocation={!data.settings.city.trim()}
+          />
+        ) : (
+          <TomorrowWeatherCard
+            weather={weatherTomorrow}
+            impact={weatherImpact}
+            adjustment={recs.find((item) => item.tomorrow.amount !== null)?.tomorrow.weatherAdjustment}
+            missingLocation={!data.settings.city.trim()}
+          />
+        )}
+      </div>
+      {data.products.length === 0 && period === "tomorrow" ? (
+        <div className="panel forecast-panel empty-tomorrow-panel">
+          <div className="panel-head">
+            <div>
+              <span className="page-eyebrow">ПЛАНИРОВАНИЕ</span>
+              <h2>Сколько приготовить утром</h2>
+              <p>{tomorrowLabel()}</p>
+            </div>
+          </div>
+          <p>
+            Добавьте первый продукт и записывайте выпуск и продажи. После первых
+            продаж здесь появится предварительная оценка количества.
+          </p>
+          <PrimaryButton onClick={() => openProduct()}>
+            <Plus size={18} /> Добавить продукт
+          </PrimaryButton>
+        </div>
+      ) : data.products.length === 0 ? (
         <div className="welcome-card">
           <div className="welcome-copy">
             <span className="eyebrow">НАЧНЁМ С ОСНОВНОГО</span>
             <h2>Ваш ясный план начинается здесь.</h2>
             <p>
               Добавьте первый продукт, затем записывайте партии и продажи. После
-              трёх дней истории появится ориентир спроса.
+              первых продаж появится предварительный ориентир спроса.
             </p>
             <PrimaryButton onClick={() => openProduct()}>
               <Plus size={18} /> Добавить продукт
@@ -1289,209 +1756,442 @@ function Overview({
         </div>
       ) : (
         <>
-          <div className="metrics-grid">
-            <Metric
-              label="Приготовлено сегодня"
-              value={fmt(producedToday)}
-              icon={<Wheat size={20} />}
-              foot="По записанным партиям"
-            />
-            <Metric
-              label="Продано сегодня"
-              value={fmt(soldToday)}
-              icon={<TrendingUp size={20} />}
-              foot="По истории продаж"
-              tone="green"
-            />
-            <Metric
-              label="Доступно к продаже"
-              value={fmt(stock)}
-              icon={<Package size={20} />}
-              foot="Без истёкших партий"
-            />
-            <Metric
-              label="Скоро истекает"
-              value={`${expiring} ${plural(expiring, "партия", "партии", "партий")}`}
-              icon={<Clock3 size={20} />}
-              foot="Проверьте сроки"
-              tone="orange"
-            />
-          </div>
-          <div className="dashboard-grid">
-            <div className="panel forecast-panel">
+          {period === "today" ? (
+            <>
+              <section className="panel production-panel">
+                <div className="panel-head">
+                  <div>
+                    <span className="page-eyebrow">РЕШЕНИЯ НА СЕГОДНЯ</span>
+                    <h2>Что приготовить сейчас</h2>
+                    <p>
+                      Остаток, ожидаемые продажи и время до закрытия по каждому
+                      товару
+                    </p>
+                  </div>
+                  {alerts.length ? (
+                    <span className="production-alert-count" role="status">
+                      <Bell size={15} />
+                      {expired
+                        ? `Истёк срок: ${expired}`
+                        : `Скоро истекает: ${expiring}`}
+                    </span>
+                  ) : (
+                    <Activity size={20} />
+                  )}
+                </div>
+                <div className="decision-grid">
+                  {recs.map(({ product, today: recommendation }) => {
+                    const remaining = recommendation.remainingDemand;
+                    const shortage =
+                      remaining === null
+                        ? null
+                        : Math.max(0, remaining - recommendation.available);
+                    const state =
+                      todayWeather.kind === "closed"
+                        ? "closed"
+                        : todayWeather.kind === "hours"
+                          ? "unknown"
+                      : recommendation.amount === null
+                        ? "unknown"
+                        : shortage && !recommendation.canPrepare
+                          ? "late"
+                          : recommendation.extra > 0
+                            ? "prepare"
+                            : "covered";
+                    const headline =
+                      state === "closed"
+                        ? "Смена завершена"
+                      : state === "unknown"
+                        ? "Пока нет оценки спроса"
+                        : state === "late"
+                          ? "До закрытия не успеть"
+                          : state === "prepare"
+                            ? `Допеките ${fmt(recommendation.extra)}`
+                            : "Пока допекать не нужно";
+                    const explanation =
+                      state === "closed"
+                        ? "Новая партия на сегодня не требуется. Остатки и сроки годности доступны ниже."
+                      : state === "unknown"
+                        ? todayWeather.kind === "hours"
+                          ? "Укажите часы работы, чтобы оценить спрос до закрытия. Остаток и сроки партий уже доступны."
+                          : "Запишите продажи, чтобы оценить спрос до закрытия. Остаток и сроки партий уже доступны."
+                        : state === "late"
+                          ? `Ожидаемый спрос превышает остаток на ${fmt(shortage || 0)} Новая партия не успеет приготовиться до закрытия.`
+                          : state === "prepare"
+                            ? `До закрытия ожидается продать больше, чем сейчас доступно, на ${fmt(recommendation.extra)}`
+                            : remaining === 0
+                              ? "До закрытия дополнительный спрос не ожидается."
+                              : "Текущего остатка достаточно для ожидаемых продаж до закрытия.";
+                    const readyAt = new Date(
+                      +now + product.prepMinutes * 60000,
+                    ).toLocaleTimeString("ru-RU", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    return (
+                      <article
+                        className={`decision-card is-${state}`}
+                        key={product.id}
+                      >
+                        <div className="decision-card-top">
+                          <ProductThumb product={product} />
+                          <div className="decision-card-name">
+                            <strong title={product.name}>{product.name}</strong>
+                            {recommendation.amount !== null &&
+                              recommendation.preliminary && (
+                                <span>Предварительная оценка</span>
+                              )}
+                          </div>
+                          <span className={`decision-status is-${state}`}>
+                            {state === "closed"
+                              ? "ЗАКРЫТО"
+                              : state === "prepare"
+                              ? "НУЖЕН ВЫПУСК"
+                              : state === "late"
+                                ? "НЕ ХВАТАЕТ ВРЕМЕНИ"
+                                : state === "covered"
+                                  ? "ОСТАТКА ХВАТАЕТ"
+                                  : "НУЖНЫ ПРОДАЖИ"}
+                          </span>
+                        </div>
+                        <strong className="decision-headline">
+                          {headline}
+                        </strong>
+                        <p className="decision-explanation">{explanation}</p>
+                        {remaining === null ? (
+                          <div className="decision-stock-only">
+                            В наличии: <b>{fmt(recommendation.available)}</b>
+                          </div>
+                        ) : (
+                          <StockCoverage
+                            stock={recommendation.available}
+                            demand={remaining}
+                          />
+                        )}
+                        <div className="decision-card-foot">
+                          <span>
+                            Время приготовления: {product.prepMinutes} мин.
+                          </span>
+                          {state === "prepare" && (
+                            <strong>Готово примерно к {readyAt}</strong>
+                          )}
+                        </div>
+                        {recommendation.amount === null ? (
+                          <button
+                            type="button"
+                            className="decision-card-action"
+                            onClick={() =>
+                              recommendation.available > 0
+                                ? openSale()
+                                : openBatch()
+                            }
+                          >
+                            {recommendation.available > 0
+                              ? "Записать продажу"
+                              : "Добавить партию"}
+                            <ArrowRight size={14} />
+                          </button>
+                        ) : (
+                          <details className="decision-details">
+                            <summary>Как получена оценка</summary>
+                            <p>
+                              {recommendation.reasons.join(" · ")}
+                              {recommendation.paceIncreased
+                                ? " · Сегодняшний темп повысил оценку."
+                                : ""}
+                            </p>
+                          </details>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+              <div className="overview-today-support">
+                <ExpirationAlerts
+                  data={data}
+                  alerts={alerts}
+                  now={now}
+                  openWriteOff={openWriteOff}
+                  changeBatchDiscount={changeBatchDiscount}
+                />
+                <div className="metrics-grid">
+                  <Metric
+                    label="Приготовлено сегодня"
+                    value={fmt(producedToday)}
+                    icon={<Wheat size={20} />}
+                    foot="По записанным партиям"
+                  />
+                  <Metric
+                    label="Продано сегодня"
+                    value={fmt(soldToday)}
+                    icon={<TrendingUp size={20} />}
+                    foot="По истории продаж"
+                    tone="green"
+                  />
+                  <Metric
+                    label="Доступно к продаже"
+                    value={fmt(stock)}
+                    icon={<Package size={20} />}
+                    foot="Без истёкших партий"
+                  />
+                  <Metric
+                    label="Скоро истекает"
+                    value={`${expiring} ${plural(expiring, "партия", "партии", "партий")}`}
+                    icon={<Clock3 size={20} />}
+                    foot="Проверьте сроки"
+                    tone="orange"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <section className="panel morning-panel">
               <div className="panel-head">
                 <div>
-                  <span className="page-eyebrow">ПЛАНИРОВАНИЕ</span>
-                  <h2>План на завтра</h2>
+                  <span className="page-eyebrow">ПЛАН НА ЗАВТРА</span>
+                  <h2>Сколько приготовить утром</h2>
                   <p>{tomorrowLabel()}</p>
                 </div>
-                <div className="weather-pill">
-                  <CloudSun size={17} />
-                  {weatherTomorrow
-                    ? `${weatherTomorrow.label}, ${Math.round(weatherTomorrow.temperature)}°`
-                    : "Без данных о погоде"}
+              </div>
+              <div className="forecast-list-toolbar">
+                <div>
+                  <strong>Первый утренний выпуск по товарам</strong>
+                  <small>Дневной спрос показан отдельно от первой партии</small>
                 </div>
+                <label className="chart-search">
+                  <Search size={15} />
+                  <input
+                    value={forecastQuery}
+                    onChange={(event) => setForecastQuery(event.target.value)}
+                    placeholder="Найти продукт"
+                    aria-label="Найти продукт в плане"
+                  />
+                </label>
               </div>
-              <div className="forecast-list">
-                {recs.map(({ product, tomorrow: fc }) => (
-                  <div className="forecast-row" key={product.id}>
-                    <ProductThumb product={product} />
-                    <div className="forecast-name">
-                      <strong>{product.name}</strong>
-                      <span>
-                        {fc.amount === null
-                          ? `Для прогноза нужно ещё ${3 - fc.count} ${plural(3 - fc.count, "день", "дня", "дней")} продаж`
-                          : fc.reasons.join(" · ")}
-                      </span>
-                    </div>
-                    <div className="forecast-amount">
-                      {fc.amount === null ? (
-                        <span className="data-needed">Мало данных</span>
-                      ) : (
-                        <>
-                          <strong>{fmt(fc.amount)}</strong>
-                          <small>спрос</small>
-                        </>
-                      )}
-                    </div>
-                    <div className="forecast-plan">
-                      {fc.amount === null ? (
-                        "—"
-                      ) : (
-                        <>
-                          <b>
-                            {fmt(
-                              initialPlan(data, product, fc.amount).quantity,
-                            )}
-                          </b>
-                          <span>утренний план*</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="panel-foot">
-                * Утренний план учитывает период свежести и составляет 35–70%
-                ожидаемого спроса. Остальное можно приготовить позже. Доля —
-                допущение текущей модели.
-              </div>
-            </div>
-            <div className="right-stack">
-              <div className="panel action-panel">
-                <div className="panel-head">
-                  <div>
-                    <span className="page-eyebrow">СЕГОДНЯ</span>
-                    <h2>Что делать сейчас</h2>
-                  </div>
-                  <Activity size={21} />
-                </div>
-                {recs.every((r) => r.today.amount === null) ? (
-                  <p className="muted-block">
-                    Пока мало истории для рекомендаций. Записывайте продажи как
-                    минимум за 3 разных дня.
-                  </p>
-                ) : (
-                  <div className="action-list">
-                    {recs.map(({ product, today: r }) => (
-                      <div className="action-item" key={product.id}>
-                        <span
-                          className={
-                            r.extra > 0
-                              ? "action-indicator active"
-                              : "action-indicator"
-                          }
-                        >
-                          {r.extra > 0 ? (
-                            <Plus size={16} />
-                          ) : (
-                            <Check size={15} />
-                          )}
-                        </span>
+              {recs.every((item) => item.tomorrow.amount === null) && (
+                <p className="forecast-empty-note">
+                  Для расчёта пока мало продаж. Запишите продажи после выпуска
+                  первой партии.
+                </p>
+              )}
+              <div className="morning-grid">
+                {tomorrowRows.length ? (
+                  tomorrowRows.map((item) => (
+                    <article className="morning-card" key={item.product.id}>
+                      <div className="morning-card-top">
+                        <ProductThumb product={item.product} />
                         <div>
-                          <strong>{product.name}</strong>
-                          <p>
-                            {r.amount === null
-                              ? "Недостаточно истории"
-                              : r.extra > 0
-                                ? `Приготовить ещё ${fmt(r.extra)}`
-                                : r.canPrepare
-                                  ? "Дополнительная партия не нужна"
-                                  : "До закрытия не успеет приготовиться"}
-                          </p>
-                          {r.amount !== null && (
-                            <small>
-                              До закрытия ожидается ещё{" "}
-                              {fmt(r.remainingDemand || 0)}, доступно{" "}
-                              {fmt(r.available)}
-                              {r.paceIncreased
-                                ? " · продажи идут быстрее обычного"
-                                : ""}
-                              .
-                            </small>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="panel alerts-panel">
-                <div className="panel-head">
-                  <div>
-                    <span className="page-eyebrow">КОНТРОЛЬ КАЧЕСТВА</span>
-                    <h2>Сроки партий</h2>
-                  </div>
-                  <Bell size={20} />
-                </div>
-                {alerts.length ? (
-                  <div className="alerts-list">
-                    {alerts.slice(0, 3).map((b) => (
-                      <div key={b.id} className={`alert-item ${b.status}`}>
-                        <span className="alert-dot" />
-                        <div>
-                          <strong>
-                            {data.products.find((p) => p.id === b.productId)
-                              ?.name || "Продукт"}{" "}
-                            · {fmt(b.remaining)}
+                          <strong title={item.product.name}>
+                            {item.product.name}
                           </strong>
-                          <p>
-                            {b.status === "expired"
-                              ? "Срок продажи истёк — недоступно к продаже"
-                              : `Истекает ${shortDateTime(b.expiresAt)}. Рассмотрите скидку.`}
-                          </p>
+                          {item.tomorrow.preliminary &&
+                            item.tomorrow.amount !== null && (
+                              <span>Предварительная оценка</span>
+                            )}
                         </div>
                       </div>
-                    ))}
-                  </div>
+                      <div className="morning-result">
+                        <span>Приготовить утром</span>
+                        <strong>
+                          {item.initial === null
+                            ? "Нет оценки"
+                            : fmt(item.initial)}
+                        </strong>
+                      </div>
+                      {item.tomorrow.amount === null ? (
+                        <>
+                          <p className="morning-missing">
+                            Пока нет основы для расчёта. Запишите продажи, чтобы
+                            получить предварительный план.
+                          </p>
+                          <button
+                            type="button"
+                            className="decision-card-action"
+                            onClick={() =>
+                              availableFor(data, item.product.id, now) > 0
+                                ? openSale()
+                                : openBatch()
+                            }
+                          >
+                            {availableFor(data, item.product.id, now) > 0
+                              ? "Записать продажу"
+                              : "Добавить партию"}
+                            <ArrowRight size={14} />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="morning-demand">
+                            Ожидаемый спрос за весь день:{" "}
+                            <b>{fmt(item.tomorrow.amount)}</b>
+                          </p>
+                          <MorningShare
+                            morning={item.initial!}
+                            demand={item.tomorrow.amount}
+                          />
+                          <p className="morning-followup">
+                            Первую партию можно дополнить позже по фактическим
+                            продажам.
+                          </p>
+                        </>
+                      )}
+                      <ForecastExplanation
+                        estimate={item.tomorrow}
+                        morning={item.initial}
+                        product={item.product}
+                        weather={weatherTomorrow}
+                        target={t}
+                        loading={weather.status === "loading"}
+                      />
+                      <div className="morning-context">
+                        Сегодня для контекста: выпущено{" "}
+                        {`${fmt(item.producedToday)}, продано ${fmt(item.soldToday)}`}
+                      </div>
+                    </article>
+                  ))
                 ) : (
-                  <p className="muted-block">
-                    Активных предупреждений нет. Система следит за временем
-                    каждой партии.
+                  <p className="forecast-empty-note">
+                    По запросу товары не найдены.
                   </p>
                 )}
               </div>
-            </div>
-          </div>
-          <div className="panel assumptions-panel">
-            <Sparkles size={18} />
-            <p>
-              <strong>Как работает оценка.</strong> После 3 дней продаж берём
-              среднее по сопоставимым дням. Утренний план зависит от срока
-              свежести и часов работы. Праздник может добавить 10%, осадки
-              снизить оценку на 5%, жара — на 3%. Темп сегодняшних продаж
-              учитывается после 20% рабочего дня. Коэффициенты условные, модель
-              не валидирована.{" "}
-              {weather.status !== "ready"
-                ? "Погодный фактор сейчас не используется."
-                : ""}{" "}
-              Праздничный календарь включает основные даты РФ без переносов
-              выходных.
-            </p>
-          </div>
+            </section>
+          )}
         </>
       )}
     </>
+  );
+}
+function ExpirationAlerts({
+  data,
+  alerts,
+  now,
+  openWriteOff,
+  changeBatchDiscount,
+}: {
+  data: Data;
+  alerts: ReturnType<typeof batchViews>;
+  now: Date;
+  openWriteOff: (b: Batch) => void;
+  changeBatchDiscount: (b: Batch, percent: number | null) => void;
+}) {
+  const entries = alerts.flatMap((batch) => {
+    const product = data.products.find((p) => p.id === batch.productId);
+    const advice = product
+      ? expirationAdvice(batch, product.shelfHours, now)
+      : null;
+    return product && advice ? [{ batch, product, advice }] : [];
+  });
+  return (
+    <div className={`panel alerts-panel${entries.length ? " has-alerts" : ""}`}>
+      <div className="panel-head">
+        <div>
+          <span className="page-eyebrow">КОНТРОЛЬ КАЧЕСТВА</span>
+          <h2>Сроки партий</h2>
+        </div>
+        <Bell size={20} />
+      </div>
+      {entries.length ? (
+        <div className="alerts-list">
+          {entries.map(({ batch, product, advice }) => (
+            <div key={batch.id} className={`alert-item ${advice.kind}`}>
+              <span className="alert-dot" />
+              <div className="alert-content">
+                <span className="alert-category">
+                  {advice.kind === "expired"
+                    ? "НЕЛЬЗЯ ПРОДАВАТЬ"
+                    : "СРОК СКОРО ИСТЕЧЁТ"}
+                </span>
+                <strong>{product.name}</strong>
+                <span className="alert-batch">
+                  Партия №{batch.id.slice(0, 8)} · приготовлена{" "}
+                  {shortDateTime(batch.preparedAt)}
+                </span>
+                <p>
+                  Остаток: {fmt(batch.remaining)} ·{" "}
+                  {advice.kind === "expired"
+                    ? `срок истёк ${shortDateTime(batch.expiresAt)}`
+                    : `до окончания ${remainingTime(advice.minutesLeft)}`}
+                </p>
+                {advice.kind === "expired" ? (
+                  <>
+                    <p className="alert-explanation">
+                      Партия недоступна к продаже. Запишите списание остатка.
+                    </p>
+                    <button
+                      type="button"
+                      className="alert-writeoff"
+                      onClick={() => openWriteOff(batch)}
+                    >
+                      Записать списание <ArrowRight size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="alert-price">
+                      Обычная цена:{" "}
+                      {product.price === undefined
+                        ? "не указана"
+                        : rub(product.price)}
+                    </p>
+                    <span className="discount-recommendation">
+                      Рекомендация: скидка {advice.discountPercent}%
+                      {product.price !== undefined &&
+                        ` · ${rub(money(product.price * (1 - advice.discountPercent / 100)))}/шт.`}
+                    </span>
+                    {batch.discount && (
+                      <p className="alert-applied">
+                        Применено к партии: {batch.discount.percent}% ·{" "}
+                        {rub(batch.discount.regularPrice)} →{" "}
+                        {rub(batch.discount.unitPrice)}/шт.
+                      </p>
+                    )}
+                    <p className="alert-explanation">
+                      По оставшемуся сроку партии: не более{" "}
+                      {advice.discountPercent === 30
+                        ? "1 часа"
+                        : advice.discountPercent === 20
+                          ? "2 часов"
+                          : "4 часов"}{" "}
+                      до окончания. Цена меняется только после применения в
+                      Economics; касса не обновляется.
+                    </p>
+                    <div className="discount-actions">
+                      {batch.discount?.percent !== advice.discountPercent && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            changeBatchDiscount(batch, advice.discountPercent)
+                          }
+                        >
+                          {batch.discount
+                            ? "Обновить скидку"
+                            : "Применить скидку"}
+                        </button>
+                      )}
+                      {batch.discount && (
+                        <button
+                          type="button"
+                          className="discount-remove"
+                          onClick={() => changeBatchDiscount(batch, null)}
+                        >
+                          Снять скидку
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted-block">
+          Активных предупреждений нет. Система следит за временем каждой партии.
+        </p>
+      )}
+    </div>
   );
 }
 function ProductThumb({ product }: { product: Product }) {
@@ -1508,6 +2208,7 @@ function ProductsPage({
   openBatch,
   setData,
   setDiscardBatch,
+  changeBatchDiscount,
 }: {
   data: Data;
   views: ReturnType<typeof batchViews>;
@@ -1515,6 +2216,7 @@ function ProductsPage({
   openBatch: (b?: Batch) => void;
   setData: Dispatch<SetStateAction<Data>>;
   setDiscardBatch: (b: Batch | null) => void;
+  changeBatchDiscount: (b: Batch, percent: number | null) => void;
 }) {
   const [query, setQuery] = useState("");
   const products = data.products.filter((p) =>
@@ -1614,6 +2316,11 @@ function ProductsPage({
                   </div>
                 </div>
                 <h3>{p.name}</h3>
+                <div className="product-price">
+                  {p.price === undefined
+                    ? "Цена не указана"
+                    : `${rub(p.price)} / шт.`}
+                </div>
                 <p>{p.description || "Описание пока не добавлено"}</p>
                 <div className="product-details">
                   <span>
@@ -1667,6 +2374,7 @@ function ProductsPage({
                       <th>ПРОДУКТ</th>
                       <th>ПРИГОТОВЛЕНО</th>
                       <th>ОСТАТОК</th>
+                      <th>ЦЕНА ПАРТИИ</th>
                       <th>ВРЕМЯ ВЫПУСКА</th>
                       <th>ПРОДАТЬ ДО</th>
                       <th>СТАТУС</th>
@@ -1695,6 +2403,39 @@ function ProductsPage({
                           {b.discarded > 0 && (
                             <small>Списано: {fmt(b.discarded)}</small>
                           )}
+                        </td>
+                        <td>
+                          {(() => {
+                            const product = data.products.find(
+                              (p) => p.id === b.productId,
+                            );
+                            if (!product) return "—";
+                            const price = batchPrice(product, b);
+                            return (
+                              <div className="batch-price-cell">
+                                <strong>
+                                  {price.unitPrice === null
+                                    ? "Цена не указана"
+                                    : rub(price.unitPrice)}
+                                </strong>
+                                {b.discount && (
+                                  <>
+                                    <small>
+                                      Обычно {rub(b.discount.regularPrice)} ·
+                                      скидка {b.discount.percent}%
+                                    </small>
+                                    <button
+                                      onClick={() =>
+                                        changeBatchDiscount(b, null)
+                                      }
+                                    >
+                                      Снять скидку
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td>{shortDateTime(b.preparedAt)}</td>
                         <td>{shortDateTime(b.expiresAt)}</td>
@@ -1774,13 +2515,6 @@ function SalesPage({
         description="Ручной журнал продаж для анализа спроса и расчёта остатков."
         action={
           <div className="title-actions">
-            <button
-              className="secondary-button planned-button"
-              title="Импорт Excel появится позже"
-              disabled
-            >
-              <FileSpreadsheet size={17} /> Импорт Excel <span>СКОРО</span>
-            </button>
             <PrimaryButton onClick={() => openSale()} className="compact">
               <Plus size={17} /> Добавить продажу
             </PrimaryButton>
@@ -1788,19 +2522,10 @@ function SalesPage({
         }
       />
       {!data.sales.length ? (
-        <EmptyState
-          icon={<BarChart3 size={34} />}
-          title="Продаж пока нет"
-          description={
-            data.products.length
-              ? "Запишите первую продажу. После трёх разных дней данных появится ориентир спроса."
-              : "Сначала добавьте продукт, затем сможете записывать продажи."
-          }
-          action={
-            <PrimaryButton onClick={() => openSale()}>
-              <Plus size={17} /> Добавить продажу
-            </PrimaryButton>
-          }
+        <SalesHistoryChart
+          data={data}
+          now={new Date()}
+          onAddSale={() => openSale()}
         />
       ) : (
         <>
@@ -1831,6 +2556,7 @@ function SalesPage({
               foot="Все записи"
             />
           </div>
+          <SalesHistoryChart data={data} now={new Date()} />
           <div className="panel table-panel">
             <div className="panel-head">
               <div>
@@ -1853,6 +2579,7 @@ function SalesPage({
                     <th>ПРОДУКТ</th>
                     <th>КОЛИЧЕСТВО</th>
                     <th>ДАТА И ВРЕМЯ</th>
+                    <th>ЦЕНА И СУММА</th>
                     <th>ИСТОЧНИК</th>
                     <th></th>
                   </tr>
@@ -1878,6 +2605,38 @@ function SalesPage({
                       </td>
                       <td>{shortDateTime(s.soldAt)}</td>
                       <td>
+                        {s.lines?.length ? (
+                          <div className="sale-lines">
+                            {s.lines.map((line) => (
+                              <span key={line.batchId}>
+                                №{line.batchId.slice(0, 8)} ·{" "}
+                                {fmt(line.quantity)} ×{" "}
+                                {line.unitPrice === null
+                                  ? "—"
+                                  : rub(line.unitPrice)}
+                                {line.discountPercent
+                                  ? ` · скидка ${line.discountPercent}%`
+                                  : ""}
+                                {line.total !== null && ` = ${rub(line.total)}`}
+                              </span>
+                            ))}
+                            <strong>
+                              Итого:{" "}
+                              {rub(
+                                money(
+                                  s.lines.reduce(
+                                    (sum, line) => sum + (line.total || 0),
+                                    0,
+                                  ),
+                                ),
+                              )}
+                            </strong>
+                          </div>
+                        ) : (
+                          <span className="data-needed">Цена не записана</span>
+                        )}
+                      </td>
+                      <td>
                         <span className="manual-badge">Вручную</span>
                       </td>
                       <td>
@@ -1897,21 +2656,12 @@ function SalesPage({
             </div>
             <div className="panel-foot">
               Продажи распределяются по доступным на момент продажи партиям:
-              сначала самая ранняя партия с действующим сроком продажи.
+              сначала самая ранняя партия с действующим сроком продажи. Цена
+              новых записей сохраняется на момент продажи.
             </div>
           </div>
         </>
       )}
-      <div className="planned-note">
-        <FileSpreadsheet size={19} />
-        <div>
-          <strong>Импорт из Excel — в планах</strong>
-          <p>
-            Пока записи добавляются вручную. В будущем здесь появится загрузка
-            таблицы.
-          </p>
-        </div>
-      </div>
     </>
   );
 }
@@ -2006,7 +2756,6 @@ function SettingsPage({
   weather: WeatherState;
 }) {
   const [form, setForm] = useState(data.settings);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(() => new Date());
   useEffect(() => {
@@ -2017,12 +2766,10 @@ function SettingsPage({
     e.preventDefault();
     if (form.close <= form.open) {
       setError("Закрытие должно быть позже открытия в тот же день.");
-      setSaved(false);
       return;
     }
     setError("");
     setData((d) => ({ ...d, settings: form }));
-    setSaved(true);
   };
   return (
     <>
@@ -2086,11 +2833,6 @@ function SettingsPage({
           <PrimaryButton type="submit">
             Сохранить настройки <ArrowRight size={17} />
           </PrimaryButton>
-          {saved && (
-            <span className="saved-note">
-              <Check size={16} /> Настройки сохранены
-            </span>
-          )}
         </form>
         <div className="settings-side">
           <div className="panel settings-info">
@@ -2132,6 +2874,16 @@ function SettingsPage({
           <div className="panel settings-info">
             <MapPin size={23} />
             <h3>Мероприятия в городе</h3>
+          </div>
+          <div className="panel settings-info expiration-factor">
+            <Clock3 size={23} />
+            <h3>Приближение срока годности</h3>
+            <p>
+              Рекомендация по скидке зависит от оставшегося срока продажи каждой
+              партии: до 4 часов — 10%, до 2 часов — 20%, до 1 часа — 30%.
+              Предупреждение появляется в последние 25% срока, не раньше чем за
+              4 часа. Цена автоматически не меняется.
+            </p>
           </div>
         </div>
       </div>
@@ -2219,6 +2971,7 @@ function ProductDialog({
       prepMinutes: 30,
       freshnessHours: 8,
       shelfHours: 24,
+      price: undefined,
     },
   );
   const [error, setError] = useState("");
@@ -2235,6 +2988,13 @@ function ProductDialog({
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (
+      form.price !== undefined &&
+      (!Number.isFinite(form.price) || form.price < 0)
+    ) {
+      setError("Цена должна быть неотрицательным числом.");
+      return;
+    }
     if (form.freshnessHours > form.shelfHours) {
       setError(
         "Время оптимальной свежести не может быть дольше срока продажи.",
@@ -2296,6 +3056,24 @@ function ProductDialog({
           />
         </label>
         <div className="field-grid">
+          <label>
+            Цена за штуку, ₽
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              required={!product}
+              value={form.price ?? ""}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  price:
+                    e.target.value === "" ? undefined : Number(e.target.value),
+                })
+              }
+              placeholder="Укажите цену"
+            />
+          </label>
           <label>
             Вес, г
             <input
@@ -2505,6 +3283,61 @@ function SaleDialog({
     },
   );
   const [error, setError] = useState("");
+  const [pastPrices, setPastPrices] = useState<
+    Record<string, { regular: string; unit: string }>
+  >({});
+  const legacyEdit = !!sale && !sale.lines?.length;
+  const changedSale =
+    !sale ||
+    form.productId !== sale.productId ||
+    form.quantity !== sale.quantity ||
+    form.soldAt !== sale.soldAt;
+  const pastSale =
+    changedSale && Date.now() - +new Date(form.soldAt) > 5 * 60000;
+  const allocation = legacyEdit
+    ? null
+    : saleLinesFor(
+        data,
+        form.productId,
+        form.quantity,
+        form.soldAt,
+        sale?.id,
+        sale && form.productId === sale.productId && form.soldAt === sale.soldAt
+          ? sale.lines
+          : [],
+      );
+  const preview = allocation?.map((line) => {
+    if (!pastSale) return line;
+    const entered = pastPrices[line.batchId];
+    const regular = Number(entered?.regular);
+    const unit = Number(entered?.unit);
+    if (
+      !entered ||
+      entered.regular === "" ||
+      entered.unit === "" ||
+      !Number.isFinite(regular) ||
+      !Number.isFinite(unit) ||
+      regular < 0 ||
+      unit < 0
+    )
+      return {
+        ...line,
+        regularPrice: null,
+        discountPercent: null,
+        unitPrice: null,
+        total: null,
+      };
+    return {
+      ...line,
+      regularPrice: money(regular),
+      discountPercent:
+        regular > 0 && unit < regular
+          ? Math.round((1 - unit / regular) * 10000) / 100
+          : null,
+      unitPrice: money(unit),
+      total: money(line.quantity * unit),
+    };
+  });
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!form.productId) {
@@ -2529,11 +3362,27 @@ function SaleDialog({
       );
       return;
     }
+    if (!legacyEdit && !preview) {
+      setError(
+        "Укажите обычную цену в карточке продукта и проверьте доступные партии.",
+      );
+      return;
+    }
+    if (pastSale && preview?.some((line) => line.unitPrice === null)) {
+      setError(
+        "Укажите обычную и фактическую цену для каждой партии на момент продажи.",
+      );
+      return;
+    }
+    const saved = {
+      ...form,
+      lines: legacyEdit ? undefined : preview || undefined,
+    };
     const next = {
       ...data,
       sales: sale
-        ? data.sales.map((s) => (s.id === form.id ? form : s))
-        : [...data.sales, form],
+        ? data.sales.map((s) => (s.id === form.id ? saved : s))
+        : [...data.sales, saved],
     };
     if (!salesFitBatches(next)) {
       setError(
@@ -2541,7 +3390,7 @@ function SaleDialog({
       );
       return;
     }
-    onSave(form);
+    onSave(saved);
   };
   return (
     <Modal
@@ -2596,6 +3445,91 @@ function SaleDialog({
               Продажа будет вычтена из самой ранней подходящей партии с
               действующим сроком продажи.
             </p>
+            {legacyEdit ? (
+              <p className="form-hint">
+                В этой ранее записанной продаже цена не указана; при
+                редактировании она останется без цены.
+              </p>
+            ) : preview ? (
+              <div className="sale-preview">
+                <strong>
+                  {pastSale ? "Цены на момент продажи" : "Цена этой продажи"}
+                </strong>
+                {pastSale && (
+                  <p className="form-hint">
+                    Продажа записывается задним числом. Укажите фактические цены
+                    каждой партии: текущая цена могла тогда отличаться.
+                  </p>
+                )}
+                {preview.map((line) => (
+                  <div key={line.batchId} className="sale-preview-line">
+                    {pastSale && (
+                      <div className="field-grid">
+                        <label>
+                          Обычная цена партии №{line.batchId.slice(0, 8)}, ₽
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            required
+                            value={pastPrices[line.batchId]?.regular ?? ""}
+                            onChange={(e) =>
+                              setPastPrices({
+                                ...pastPrices,
+                                [line.batchId]: {
+                                  regular: e.target.value,
+                                  unit: pastPrices[line.batchId]?.unit ?? "",
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Фактическая цена за штуку, ₽
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            required
+                            value={pastPrices[line.batchId]?.unit ?? ""}
+                            onChange={(e) =>
+                              setPastPrices({
+                                ...pastPrices,
+                                [line.batchId]: {
+                                  regular:
+                                    pastPrices[line.batchId]?.regular ?? "",
+                                  unit: e.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    )}
+                    <span>
+                      Партия №{line.batchId.slice(0, 8)}: {fmt(line.quantity)} ×{" "}
+                      {line.unitPrice === null ? "—" : rub(line.unitPrice)}
+                      {line.discountPercent
+                        ? ` (−${line.discountPercent}%)`
+                        : ""}{" "}
+                      = {line.total === null ? "—" : rub(line.total)}
+                    </span>
+                  </div>
+                ))}
+                {preview.every((line) => line.total !== null) && (
+                  <b>
+                    {rub(
+                      money(
+                        preview.reduce(
+                          (sum, line) => sum + (line.total || 0),
+                          0,
+                        ),
+                      ),
+                    )}
+                  </b>
+                )}
+              </div>
+            ) : null}
             {error && <div className="form-error">{error}</div>}
             <div className="modal-actions">
               <button
