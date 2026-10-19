@@ -16,6 +16,7 @@ import {
   Navigate,
   Route,
   Routes,
+  useLocation,
   useNavigate,
 } from "react-router-dom";
 import {
@@ -83,6 +84,7 @@ import {
   type TodayWeather,
 } from "./model";
 import { SalesHistoryChart } from "./AnalyticsCharts";
+import { SiteCursor } from "./SiteCursor";
 import "./index.css";
 
 type Dialog = "product" | "batch" | "sale" | null;
@@ -302,7 +304,6 @@ function useReveal() {
 function Landing() {
   useReveal();
   const navigate = useNavigate();
-  const [cursor, setCursor] = useState({ x: -100, y: -100, active: false });
   const submitContact = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -337,19 +338,7 @@ function Landing() {
     "РЕШЕНИЕ",
   ];
   return (
-    <div
-      className="landing"
-      onMouseMove={(e) =>
-        setCursor({ x: e.clientX, y: e.clientY, active: true })
-      }
-      onMouseLeave={() => setCursor((c) => ({ ...c, active: false }))}
-    >
-      <div
-        className={`cursor-ring ${cursor.active ? "on" : ""}`}
-        style={{
-          transform: `translate(${cursor.x - 16}px,${cursor.y - 16}px)`,
-        }}
-      />
+    <div className="landing">
       <header className="site-header">
         <div className="site-container header-inner">
           <Link to="/" aria-label="Economics, главная">
@@ -915,6 +904,7 @@ function AppShell({
   setData: Dispatch<SetStateAction<Data>>;
   weather: WeatherState;
 }) {
+  const location = useLocation();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -1102,53 +1092,55 @@ function AppShell({
           </div>
         )}
         <div className="app-content">
-          <Routes>
-            <Route
-              index
-              element={
-                <Overview
-                  {...{
-                    data,
-                    weather,
-                    now,
-                    views,
-                    alerts,
-                    openProduct,
-                    openBatch,
-                    openSale,
-                    openWriteOff: setDiscardBatch,
-                    changeBatchDiscount,
-                  }}
-                />
-              }
-            />
-            <Route
-              path="products"
-              element={
-                <ProductsPage
-                  {...{
-                    data,
-                    views,
-                    openProduct,
-                    openBatch,
-                    setData,
-                    setDiscardBatch,
-                    changeBatchDiscount,
-                  }}
-                />
-              }
-            />
-            <Route
-              path="sales"
-              element={<SalesPage {...{ data, openSale, setData }} />}
-            />
-            <Route path="chat" element={<ChatPage />} />
-            <Route
-              path="settings"
-              element={<SettingsPage {...{ data, setData, weather }} />}
-            />
-            <Route path="*" element={<Navigate to="/app" replace />} />
-          </Routes>
+          <div className="page-enter" key={location.pathname}>
+            <Routes location={location}>
+              <Route
+                index
+                element={
+                  <Overview
+                    {...{
+                      data,
+                      weather,
+                      now,
+                      views,
+                      alerts,
+                      openProduct,
+                      openBatch,
+                      openSale,
+                      openWriteOff: setDiscardBatch,
+                      changeBatchDiscount,
+                    }}
+                  />
+                }
+              />
+              <Route
+                path="products"
+                element={
+                  <ProductsPage
+                    {...{
+                      data,
+                      views,
+                      openProduct,
+                      openBatch,
+                      setData,
+                      setDiscardBatch,
+                      changeBatchDiscount,
+                    }}
+                  />
+                }
+              />
+              <Route
+                path="sales"
+                element={<SalesPage {...{ data, openSale, setData }} />}
+              />
+              <Route path="chat" element={<ChatPage />} />
+              <Route
+                path="settings"
+                element={<SettingsPage {...{ data, setData, weather }} />}
+              />
+              <Route path="*" element={<Navigate to="/app" replace />} />
+            </Routes>
+          </div>
         </div>
       </div>
       {dialog === "product" && (
@@ -1659,7 +1651,6 @@ function Overview({
     0,
   );
   const expiring = alerts.filter((a) => a.status === "aging").length;
-  const expired = alerts.filter((a) => a.status === "expired").length;
   return (
     <>
       <PageTitle
@@ -1687,7 +1678,7 @@ function Overview({
           <small>Спрос и план выпуска</small>
         </button>
       </div>
-      <div className="overview-weather-row" key={period}>
+      <div className="overview-weather-row" key={`weather-${period}`}>
         {period === "today" ? (
           <TodayWeatherCard
             weather={todayWeather}
@@ -1705,6 +1696,7 @@ function Overview({
           />
         )}
       </div>
+      <div className="overview-view" key={`content-${period}`}>
       {data.products.length === 0 && period === "tomorrow" ? (
         <div className="panel forecast-panel empty-tomorrow-panel">
           <div className="panel-head">
@@ -1758,6 +1750,15 @@ function Overview({
         <>
           {period === "today" ? (
             <>
+              {alerts.length > 0 && (
+                <ExpirationAlerts
+                  data={data}
+                  alerts={alerts}
+                  now={now}
+                  openWriteOff={openWriteOff}
+                  changeBatchDiscount={changeBatchDiscount}
+                />
+              )}
               <section className="panel production-panel">
                 <div className="panel-head">
                   <div>
@@ -1768,16 +1769,6 @@ function Overview({
                       товару
                     </p>
                   </div>
-                  {alerts.length ? (
-                    <span className="production-alert-count" role="status">
-                      <Bell size={15} />
-                      {expired
-                        ? `Истёк срок: ${expired}`
-                        : `Скоро истекает: ${expiring}`}
-                    </span>
-                  ) : (
-                    <Activity size={20} />
-                  )}
                 </div>
                 <div className="decision-grid">
                   {recs.map(({ product, today: recommendation }) => {
@@ -1908,40 +1899,36 @@ function Overview({
                 </div>
               </section>
               <div className="overview-today-support">
-                <ExpirationAlerts
-                  data={data}
-                  alerts={alerts}
-                  now={now}
-                  openWriteOff={openWriteOff}
-                  changeBatchDiscount={changeBatchDiscount}
-                />
-                <div className="metrics-grid">
-                  <Metric
-                    label="Приготовлено сегодня"
-                    value={fmt(producedToday)}
-                    icon={<Wheat size={20} />}
-                    foot="По записанным партиям"
+                {alerts.length === 0 && (
+                  <ExpirationAlerts
+                    data={data}
+                    alerts={alerts}
+                    now={now}
+                    openWriteOff={openWriteOff}
+                    changeBatchDiscount={changeBatchDiscount}
                   />
-                  <Metric
-                    label="Продано сегодня"
-                    value={fmt(soldToday)}
-                    icon={<TrendingUp size={20} />}
-                    foot="По истории продаж"
-                    tone="green"
-                  />
-                  <Metric
-                    label="Доступно к продаже"
-                    value={fmt(stock)}
-                    icon={<Package size={20} />}
-                    foot="Без истёкших партий"
-                  />
-                  <Metric
-                    label="Скоро истекает"
-                    value={`${expiring} ${plural(expiring, "партия", "партии", "партий")}`}
-                    icon={<Clock3 size={20} />}
-                    foot="Проверьте сроки"
-                    tone="orange"
-                  />
+                )}
+                <div className="today-stats" aria-label="Показатели за сегодня">
+                  <div className="today-stat">
+                    <Wheat size={17} aria-hidden="true" />
+                    <span>Приготовлено<small>По записанным партиям</small></span>
+                    <strong>{fmt(producedToday)}</strong>
+                  </div>
+                  <div className="today-stat">
+                    <TrendingUp size={17} aria-hidden="true" />
+                    <span>Продано<small>По истории продаж</small></span>
+                    <strong>{fmt(soldToday)}</strong>
+                  </div>
+                  <div className="today-stat">
+                    <Package size={17} aria-hidden="true" />
+                    <span>Доступно к продаже<small>Без истёкших партий</small></span>
+                    <strong>{fmt(stock)}</strong>
+                  </div>
+                  <div className={`today-stat${expiring ? " needs-attention" : ""}`}>
+                    <Clock3 size={17} aria-hidden="true" />
+                    <span>Скоро истекает<small>По остаткам партий</small></span>
+                    <strong>{expiring} {plural(expiring, "партия", "партии", "партий")}</strong>
+                  </div>
                 </div>
               </div>
             </>
@@ -1955,10 +1942,9 @@ function Overview({
                 </div>
               </div>
               <div className="forecast-list-toolbar">
-                <div>
-                  <strong>Первый утренний выпуск по товарам</strong>
-                  <small>Дневной спрос показан отдельно от первой партии</small>
-                </div>
+                <span className="morning-list-count">
+                  {data.products.length} {plural(data.products.length, "товар", "товара", "товаров")} в плане
+                </span>
                 <label className="chart-search">
                   <Search size={15} />
                   <input
@@ -1969,12 +1955,6 @@ function Overview({
                   />
                 </label>
               </div>
-              {recs.every((item) => item.tomorrow.amount === null) && (
-                <p className="forecast-empty-note">
-                  Для расчёта пока мало продаж. Запишите продажи после выпуска
-                  первой партии.
-                </p>
-              )}
               <div className="morning-grid">
                 {tomorrowRows.length ? (
                   tomorrowRows.map((item) => (
@@ -1991,7 +1971,10 @@ function Overview({
                             )}
                         </div>
                       </div>
-                      <div className="morning-result">
+                      <div
+                        className={`morning-result${item.initial === null ? " is-empty" : ""}`}
+                        aria-label={`${item.product.name}: приготовить утром ${item.initial === null ? "нет оценки" : fmt(item.initial)}`}
+                      >
                         <span>Приготовить утром</span>
                         <strong>
                           {item.initial === null
@@ -2044,10 +2027,12 @@ function Overview({
                         target={t}
                         loading={weather.status === "loading"}
                       />
-                      <div className="morning-context">
-                        Сегодня для контекста: выпущено{" "}
-                        {`${fmt(item.producedToday)}, продано ${fmt(item.soldToday)}`}
-                      </div>
+                      {(item.producedToday > 0 || item.soldToday > 0) && (
+                        <div className="morning-context">
+                          Сегодня для контекста: выпущено{" "}
+                          {`${fmt(item.producedToday)}, продано ${fmt(item.soldToday)}`}
+                        </div>
+                      )}
                     </article>
                   ))
                 ) : (
@@ -2060,6 +2045,7 @@ function Overview({
           )}
         </>
       )}
+      </div>
     </>
   );
 }
@@ -2082,15 +2068,28 @@ function ExpirationAlerts({
       ? expirationAdvice(batch, product.shelfHours, now)
       : null;
     return product && advice ? [{ batch, product, advice }] : [];
-  });
+  }).sort((a, b) =>
+    a.advice.kind === "expired" && b.advice.kind !== "expired" ? -1 :
+    b.advice.kind === "expired" && a.advice.kind !== "expired" ? 1 :
+    a.advice.kind === "discount" && b.advice.kind === "discount"
+      ? a.advice.minutesLeft - b.advice.minutesLeft : 0,
+  );
+  const expiredCount = entries.filter(({ advice }) => advice.kind === "expired").length;
   return (
-    <div className={`panel alerts-panel${entries.length ? " has-alerts" : ""}`}>
+    <div className={`panel alerts-panel${entries.length ? " has-alerts" : ""}${expiredCount ? " has-expired" : ""}`}>
       <div className="panel-head">
         <div>
           <span className="page-eyebrow">КОНТРОЛЬ КАЧЕСТВА</span>
           <h2>Сроки партий</h2>
         </div>
-        <Bell size={20} />
+        {entries.length ? (
+          <span className="alerts-count" role="status">
+            <Bell size={15} />
+            {expiredCount
+              ? `${expiredCount} ${plural(expiredCount, "партия просрочена", "партии просрочены", "партий просрочено")}`
+              : `${entries.length} ${plural(entries.length, "партия требует внимания", "партии требуют внимания", "партий требуют внимания")}`}
+          </span>
+        ) : <Bell size={20} />}
       </div>
       {entries.length ? (
         <div className="alerts-list">
@@ -2219,6 +2218,11 @@ function ProductsPage({
   changeBatchDiscount: (b: Batch, percent: number | null) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [entering, setEntering] = useState(true);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEntering(false), 600);
+    return () => window.clearTimeout(timer);
+  }, []);
   const products = data.products.filter((p) =>
     p.name.toLowerCase().includes(query.toLowerCase()),
   );
@@ -2295,7 +2299,7 @@ function ProductsPage({
               {plural(products.length, "продукт", "продукта", "продуктов")}
             </span>
           </div>
-          <div className="product-grid">
+          <div className={`product-grid${entering ? " product-grid-entering" : ""}`}>
             {products.map((p) => (
               <div className="product-card" key={p.id}>
                 <div className="product-card-top">
@@ -3608,6 +3612,7 @@ function Root() {
   const weather = useWeather(data.settings.city);
   return (
     <BrowserRouter>
+      <SiteCursor />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/register" element={<Register setData={setData} />} />
