@@ -12,6 +12,7 @@ import {
 } from "react";
 import {
   BrowserRouter,
+  HashRouter,
   Link,
   NavLink,
   Navigate,
@@ -324,6 +325,33 @@ function useDismissibleMenu(ref: RefObject<HTMLDetailsElement | null>) {
   }, [ref]);
 }
 
+function SectionLink({
+  id,
+  children,
+  className,
+}: {
+  id: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <a
+      href={`#${id}`}
+      className={className}
+      onClick={(event) => {
+        event.preventDefault();
+        document.getElementById(id)?.scrollIntoView({
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "auto"
+            : "smooth",
+        });
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 function Landing() {
   useReveal();
   const navigate = useNavigate();
@@ -370,10 +398,10 @@ function Landing() {
             <Brand />
           </Link>
           <nav>
-            <a href="#problem">О продукте</a>
-            <a href="#workflow">Как это работает</a>
-            <a href="#capabilities">Возможности</a>
-            <a href="#contact">Контакты</a>
+            <SectionLink id="problem">О продукте</SectionLink>
+            <SectionLink id="workflow">Как это работает</SectionLink>
+            <SectionLink id="capabilities">Возможности</SectionLink>
+            <SectionLink id="contact">Контакты</SectionLink>
           </nav>
           <div className="header-actions">
             <Link to="/app" className="header-login">
@@ -389,10 +417,10 @@ function Landing() {
               aria-label="Навигация по сайту"
               onClick={() => { if (mobileMenuRef.current) mobileMenuRef.current.open = false; }}
             >
-              <a href="#problem">О продукте</a>
-              <a href="#workflow">Как это работает</a>
-              <a href="#capabilities">Возможности</a>
-              <a href="#contact">Контакты</a>
+              <SectionLink id="problem">О продукте</SectionLink>
+              <SectionLink id="workflow">Как это работает</SectionLink>
+              <SectionLink id="capabilities">Возможности</SectionLink>
+              <SectionLink id="contact">Контакты</SectionLink>
               <Link to="/app">Войти</Link>
               <Link to="/register">Регистрация</Link>
             </nav>
@@ -419,12 +447,12 @@ function Landing() {
               <PrimaryButton onClick={() => navigate("/app")}>
                 Открыть приложение <ArrowUpRight size={18} />
               </PrimaryButton>
-              <a href="#workflow" className="round-link">
+              <SectionLink id="workflow" className="round-link">
                 <span>
                   <ArrowDownRight size={19} />
                 </span>{" "}
                 Как это работает
-              </a>
+              </SectionLink>
             </div>
           </div>
           <div className="hero-visual reveal">
@@ -765,9 +793,9 @@ function Landing() {
           <Brand light />
           <p>Планируйте выпечку на основе данных.</p>
           <div>
-            <a href="#problem">О продукте</a>
-            <a href="#workflow">Как это работает</a>
-            <a href="#contact">Контакты</a>
+            <SectionLink id="problem">О продукте</SectionLink>
+            <SectionLink id="workflow">Как это работает</SectionLink>
+            <SectionLink id="contact">Контакты</SectionLink>
           </div>
         </div>
         <div className="site-container footer-bottom">
@@ -3666,8 +3694,9 @@ function DiscardDialog({
 function Root() {
   const { data, setData } = useData();
   const weather = useWeather(data.settings.city);
+  const Router = import.meta.env.BASE_URL === "/economics/" ? HashRouter : BrowserRouter;
   return (
-    <BrowserRouter>
+    <Router>
       <SiteCursor />
       <Routes>
         <Route path="/" element={<Landing />} />
@@ -3678,7 +3707,7 @@ function Root() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 export default Root;

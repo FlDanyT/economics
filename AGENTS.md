@@ -11,6 +11,7 @@ Economics is a Russian-language, browser-based bakery/café planning application
 - `src/index.css` holds most UI styling; `tailwind.config.js` and `postcss.config.js` configure Tailwind. `index.html` and `public/` contain the document shell and favicon.
 - `src/SiteCursor.tsx` owns the shared decorative pointer ring. Route entrance and initial product-card motion live in `App.tsx`/`index.css`; keep them brief, non-blocking, and disabled for reduced motion or imprecise pointers.
 - Responsive layouts and compact navigation live in `src/index.css`/`App.tsx`. At widths up to 980px the sidebar and landing navigation become keyboard-accessible menus; on small screens charts and dense tables scroll within their own regions. Preserve these paths and check phone, tablet and desktop layouts after UI changes.
+- Production builds target GitHub Pages at `/economics/` (`vite.config.ts`). The deployed app uses hash routes because Pages does not rewrite deep links; local development keeps browser routes. Keep asset URLs relative to Vite's base path, including the favicon.
 - `Frontend/tests/*.test.mjs` cover charts, expiry, pricing and today's weather. There are no more specific `AGENTS.md` files at present; respect any that are added later.
 
 ## Stack and commands
