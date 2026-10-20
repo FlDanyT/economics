@@ -800,6 +800,12 @@ function Landing() {
         </div>
         <div className="site-container footer-bottom">
           <span>© {new Date().getFullYear()} Economics.</span>
+          <div className="footer-contacts" aria-label="Контактная информация">
+            <a href="tel:+79266191233">8 926 619 12 33</a>
+            <a href="mailto:daniiltikhonovcompany@gmail.com">
+              daniiltikhonovcompany@gmail.com
+            </a>
+          </div>
         </div>
       </footer>
     </div>
