@@ -161,6 +161,8 @@ a {
   position: fixed;
   left: 0;
   top: 0;
+  margin-left: -16px;
+  margin-top: -16px;
   width: 32px;
   height: 32px;
   border: 1px solid #7bab49;
@@ -170,7 +172,6 @@ a {
   opacity: 0;
   transition:
     opacity 0.16s ease,
-    transform 0.08s linear,
     scale 0.18s ease;
   mix-blend-mode: multiply;
 }
