@@ -2,17 +2,18 @@
 
 ## What exists
 
-Economics is a Russian-language, browser-based bakery/café planning application. It records products, production batches, sales and write-offs, then shows stock, expiry alerts, sales charts and production recommendations for today and tomorrow. The same frontend contains the public landing page, a frontend-only registration form, settings and a chat screen. There is no working backend or real account authentication; `backend/` currently contains only `.gitignore`. The chat returns a fixed unavailable response, and the landing contact form does not transmit data.
+Economics is a Russian-language, browser-based bakery/café planning application. It records products, production batches, sales and write-offs, then shows stock, expiry alerts, sales charts and production recommendations for today and tomorrow. The same frontend contains the public landing page, a frontend-only registration form, settings and a guided, button-driven data assistant. There is no working backend or real account authentication; `backend/` currently contains only `.gitignore`. The landing contact form does not transmit data.
 
 ## Where to work
 
 - `Frontend/` is the application. `src/main.tsx` mounts it; `src/App.tsx` contains routes, pages, forms, browser persistence and the weather request.
 - `src/model.ts` defines persisted data types, batch and sale allocation, expiry/discount rules, forecasts and weather adjustments. `src/chartData.ts` prepares chart data; `src/AnalyticsCharts.tsx` renders the shared sales chart.
+- `src/assistantAnswers.ts` builds read-only assistant answers from the same model functions as the dashboard; `src/GuidedChat.tsx` handles the question, product and period choices. Chat history stays in component memory and does not change stored data.
 - `src/index.css` holds most UI styling; `tailwind.config.js` and `postcss.config.js` configure Tailwind. `index.html` and `public/` contain the document shell and favicon.
 - `src/SiteCursor.tsx` owns the shared decorative pointer ring. Route entrance and initial product-card motion live in `App.tsx`/`index.css`; keep them brief, non-blocking, and disabled for reduced motion or imprecise pointers.
 - Responsive layouts and compact navigation live in `src/index.css`/`App.tsx`. At widths up to 980px the sidebar and landing navigation become keyboard-accessible menus; on small screens charts and dense tables scroll within their own regions. Preserve these paths and check phone, tablet and desktop layouts after UI changes.
 - Production builds target GitHub Pages at `/economics/` (`vite.config.ts`). The deployed app uses hash routes because Pages does not rewrite deep links; local development keeps browser routes. Keep asset URLs relative to Vite's base path, including the favicon.
-- `Frontend/tests/*.test.mjs` cover charts, expiry, pricing and today's weather. There are no more specific `AGENTS.md` files at present; respect any that are added later.
+- `Frontend/tests/*.test.mjs` cover charts, expiry, pricing, today's weather and assistant answers. There are no more specific `AGENTS.md` files at present; respect any that are added later.
 
 ## Stack and commands
 
@@ -32,7 +33,7 @@ npm run build
 - Products hold preparation, freshness and sale lifetimes and an optional regular unit price. Batches hold quantities, write-offs and optional *batch-specific* discounts. Sales are allocated to eligible, unexpired batches in preparation order; newer sale lines preserve the price used at sale time. Expired stock cannot be sold. Discount advice is separate from an explicitly applied discount.
 - Forecasts in `model.ts` use recorded sales, comparable weekdays/day types, fixed Russian holidays and available weather. With limited data they may be preliminary or absent; weather alone must never produce a numerical demand estimate. Today's remaining-demand calculation also uses working hours, sales pace and sellable stock. Treat the model's weather and holiday percentages as assumptions, not proven business effects.
 - `useWeather` geocodes the configured city and fetches daily and hourly weather directly from Open-Meteo in the browser. Today's adjustment applies only to affected remaining working minutes; tomorrow uses the matching day's daily weather. Missing location, incomplete data and request failure must remain valid states. The settings screen has an events heading, but there is no events feed or event-based forecast adjustment.
-- Registration validates fields and saves only business name and city, not credentials. No API stores application data or sends contact/chat messages. Do not suggest otherwise in UI copy.
+- Registration validates fields and saves only business name and city, not credentials. No API stores application data or sends contact/chat messages. The guided assistant reads current application data and navigates to existing pages; it does not write business data or call an AI service. Do not suggest otherwise in UI copy.
 
 ## Change discipline
 

@@ -44,7 +44,6 @@ import {
   Pencil,
   Plus,
   Search,
-  Send,
   Settings as SettingsIcon,
   Sparkles,
   Sun,
@@ -87,6 +86,7 @@ import {
   type TodayWeather,
 } from "./model";
 import { SalesHistoryChart } from "./AnalyticsCharts";
+import { GuidedChat } from "./GuidedChat";
 import { SiteCursor } from "./SiteCursor";
 import "./index.css";
 
@@ -1221,7 +1221,7 @@ function AppShell({
                 path="sales"
                 element={<SalesPage {...{ data, openSale, setData }} />}
               />
-              <Route path="chat" element={<ChatPage />} />
+              <Route path="chat" element={<GuidedChat data={data} weather={weather} now={now} />} />
               <Route
                 path="settings"
                 element={<SettingsPage {...{ data, setData, weather }} />}
@@ -2756,87 +2756,6 @@ function SalesPage({
           </div>
         </>
       )}
-    </>
-  );
-}
-function ChatPage() {
-  const [messages, setMessages] = useState<
-    { id: string; role: "user" | "assistant"; text: string }[]
-  >([]);
-  const [draft, setDraft] = useState("");
-  const messagesRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (messagesRef.current) {
-      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-    }
-  }, [messages]);
-  const send = (e: FormEvent) => {
-    e.preventDefault();
-    const text = draft.trim();
-    if (!text) return;
-    setMessages((m) => [
-      ...m,
-      { id: id(), role: "user", text },
-      { id: id(), role: "assistant", text: "Чат временно недоступен." },
-    ]);
-    setDraft("");
-  };
-  return (
-    <>
-      <PageTitle
-        eyebrow="ПОМОЩНИК"
-        title="Чат"
-        description="Напишите сообщение помощнику Economics."
-      />
-      <div className="chat-shell">
-        <div className="chat-head">
-          <span className="chat-avatar">
-            <Sparkles size={20} />
-          </span>
-          <div>
-            <strong>Помощник Economics</strong>
-            <small>Ваш диалог</small>
-          </div>
-        </div>
-        <div
-          className="chat-messages"
-          ref={messagesRef}
-          role="log"
-          aria-label="История сообщений"
-          aria-live="polite"
-        >
-          {!messages.length ? (
-            <div className="chat-empty">
-              <span>
-                <MessageCircle size={31} />
-              </span>
-              <h3>Спросите о своём плане</h3>
-              <p>Здесь появятся ваши сообщения.</p>
-            </div>
-          ) : (
-            messages.map((m) => (
-              <div className={`message ${m.role}`} key={m.id}>
-                <span className="message-author">
-                  {m.role === "user" ? "Вы" : "Помощник Economics"}
-                </span>
-                <span>{m.text}</span>
-              </div>
-            ))
-          )}
-        </div>
-        <form className="chat-input" onSubmit={send}>
-          <input
-            type="text"
-            aria-label="Сообщение"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Напишите сообщение..."
-          />
-          <button type="submit" aria-label="Отправить" disabled={!draft.trim()}>
-            <Send size={18} />
-          </button>
-        </form>
-      </div>
     </>
   );
 }
